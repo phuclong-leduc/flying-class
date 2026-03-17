@@ -8,6 +8,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: ${API_PORT:-3000}
+      PRISMA_DATABASE_URL: ${PRISMA_DATABASE_URL}
+      SHADOW_DATABASE_URL: ${SHADOW_DATABASE_URL}
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       POSTGRES_DB: ${POSTGRES_DB}

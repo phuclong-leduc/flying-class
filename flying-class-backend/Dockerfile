@@ -9,6 +9,7 @@ RUN npm ci
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN npx prisma generate
 RUN npm run build
 
 FROM base AS runtime
@@ -17,9 +18,13 @@ COPY package*.json ./
 RUN npm ci --omit=dev && chown -R node:node /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+
+RUN npx prisma generate
 
 COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
+RUN sed -i 's/\r$//' docker-entrypoint.sh \
+	&& chmod +x docker-entrypoint.sh
 
 USER node
 EXPOSE 3000
