@@ -1,0 +1,1103 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+docker/
+  postgres/
+    init/
+      00-init-enterprise.sh
+prisma/
+  migrations/
+    20260313090347_init_auth_profile_course/
+      migration.sql
+    migration_lock.toml
+  schema.prisma
+  seed.ts
+src/
+  common/
+    filters/
+      global-exception.filter.ts
+    types/
+      prisma.types.ts
+  config/
+    configuration.ts
+    env.validation.ts
+  infrastructure/
+    database/
+      prisma/
+        prisma.health.ts
+        prisma.module.ts
+        prisma.service.ts
+    redis/
+      redis.health.ts
+      redis.module.ts
+      redis.service.ts
+    infrastructure.module.ts
+  app.controller.ts
+  app.module.ts
+  app.service.ts
+  main.ts
+.dockerignore
+.gitignore
+docker-compose.yml
+docker-entrypoint.sh
+Dockerfile
+nest-cli.json
+package.json
+prisma.config.ts
+tsconfig.build.json
+tsconfig.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="prisma/seed.ts">
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
+
+const connectionString = process.env.PRISMA_DATABASE_URL || process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error('DATABASE_URL is not defined in the environment variables.');
+}
+
+const pool = new Pool({ connectionString });
+const adapter = new PrismaPg(pool);
+
+const prisma = new PrismaClient({ adapter });
+
+async function main() {
+  console.log('Start seeding...');
+
+  const adminEmail = 'admin@flyingclass.com';
+  const adminUser = await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: {}, // Do nothing if the user already exists
+    create: {
+      email: adminEmail,
+      passwordHash: 'hashed_password_placeholder', // Remember to hash this in a real app
+      role: 'ADMIN',
+      isVerified: true,
+      profile: {
+        create: {
+          fullName: 'System Administrator',
+        },
+      },
+    },
+  });
+  console.log(`Admin user seeded with ID: ${adminUser.id}`);
+
+  const subjects = ['Mathematics', 'Physics', 'Chemistry', 'English'];
+  for (const name of subjects) {
+    await prisma.subject.upsert({
+      where: { name },
+      update: {},
+      create: { name, description: `Standard ${name} curriculum` },
+    });
+  }
+  
+  console.log('Subjects seeded successfully.');
+}
+
+main()
+  .catch((e) => {
+    console.error('Seeding failed:', e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+    await pool.end();
+  });
+</file>
+
+<file path="src/common/filters/global-exception.filter.ts">
+import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Request, Response } from 'express';
+
+@Catch()
+export class GlobalExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(GlobalExceptionFilter.name);
+
+  catch(exception: unknown, host: ArgumentsHost) {
+    const ctx = host.switchToHttp();
+    const response = ctx.getResponse<Response>();
+    const request = ctx.getRequest<Request>();
+
+    const status = exception instanceof HttpException
+        ? exception.getStatus()
+        : HttpStatus.INTERNAL_SERVER_ERROR;
+
+    const message = exception instanceof HttpException
+        ? exception.getResponse()
+        : 'Internal server error';
+
+    if (status === HttpStatus.INTERNAL_SERVER_ERROR) {
+      this.logger.error(
+        `Unhandled Exception`, 
+        exception instanceof Error ? exception.stack : 'Unknown error'
+      );
+    }
+
+    response.status(status).json({
+      statusCode: status,
+      timestamp: new Date().toISOString(),
+      path: request.url,
+      requestId: request.id, 
+      message: typeof message === 'string' ? message : (message as any).message || message,
+    });
+  }
+}
+</file>
+
+<file path="src/common/types/prisma.types.ts">
+import { Prisma, PrismaClient } from '@prisma/client';
+
+export type PrismaTransaction = Prisma.TransactionClient | PrismaClient;
+</file>
+
+<file path="src/config/configuration.ts">
+const parsePort = (value: string | undefined, fallback: number): number => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : fallback;
+};
+
+export default () => ({
+  app: {
+    nodeEnv: process.env.NODE_ENV ?? 'development',
+    port: parsePort(process.env.PORT ?? process.env.API_PORT, 3000),
+  },
+  database: {
+    url: process.env.DATABASE_URL,
+    shadowUrl: process.env.SHADOW_DATABASE_URL,
+    name: process.env.POSTGRES_DB,
+    user: process.env.POSTGRES_USER,
+    password: process.env.POSTGRES_PASSWORD,
+    port: parsePort(process.env.POSTGRES_PORT, 5432),
+  },
+  secrets: {
+    dbOwner: process.env.DB_OWNER_PASSWORD,
+    prisma: process.env.PRISMA_PASSWORD,
+    app: process.env.APP_PASSWORD,
+    readonly: process.env.READONLY_PASSWORD,
+  },
+  redis: {
+    url: process.env.REDIS_URL,
+    port: parsePort(process.env.REDIS_PORT, 6379),
+  },
+});
+</file>
+
+<file path="src/config/env.validation.ts">
+import * as Joi from 'joi';
+
+export const envValidationSchema = Joi.object({
+  NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
+  PORT: Joi.number().port(),
+  API_PORT: Joi.number().port(),
+  
+  POSTGRES_DB: Joi.string().required(),
+  POSTGRES_USER: Joi.string().required(),
+  POSTGRES_PASSWORD: Joi.string().allow('').default(''),
+  POSTGRES_PORT: Joi.number().port().default(5432),
+  
+  DB_OWNER_PASSWORD: Joi.string().allow('').default(''),
+  PRISMA_PASSWORD: Joi.string().allow('').default(''),
+  APP_PASSWORD: Joi.string().allow('').default(''),
+  READONLY_PASSWORD: Joi.string().allow('').default(''),
+  
+  REDIS_PORT: Joi.number().port().default(6379),
+  REDIS_URL: Joi.string().uri({ scheme: ['redis', 'rediss'] }).required(),
+
+  PRISMA_DATABASE_URL: Joi.string().uri({ scheme: ['postgresql', 'postgres'] }).optional(),
+  DATABASE_URL: Joi.string().uri({ scheme: ['postgresql', 'postgres'] }).required(),
+  SHADOW_DATABASE_URL: Joi.string().uri({ scheme: ['postgresql', 'postgres'] }).optional(),
+}).or('PORT', 'API_PORT');
+</file>
+
+<file path="src/infrastructure/database/prisma/prisma.health.ts">
+import { Injectable } from '@nestjs/common';
+import { HealthIndicatorResult, HealthIndicatorService } from '@nestjs/terminus';
+import { PrismaService } from './prisma.service';
+
+@Injectable()
+export class PrismaHealthIndicator {
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly healthIndicatorService: HealthIndicatorService, 
+  ) {}
+
+  async isHealthy(key: string): Promise<HealthIndicatorResult> {
+    const indicator = this.healthIndicatorService.check(key);
+    try {
+      await this.prismaService.$queryRaw`SELECT 1`;
+      return indicator.up();
+    } catch (error) {
+      return indicator.down({ 
+        message: 'Prisma check failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+}
+</file>
+
+<file path="src/infrastructure/redis/redis.health.ts">
+import { Injectable } from '@nestjs/common';
+import { HealthIndicatorResult, HealthIndicatorService } from '@nestjs/terminus';
+import { RedisService } from './redis.service';
+
+@Injectable()
+export class RedisHealthIndicator {
+  constructor(
+    private readonly redisService: RedisService,
+    private readonly healthIndicatorService: HealthIndicatorService,
+  ) {}
+
+  async isHealthy(key: string): Promise<HealthIndicatorResult> {
+    const indicator = this.healthIndicatorService.check(key);
+
+    try {
+      await this.redisService.ping();
+      return indicator.up();
+    } catch (error) {
+      return indicator.down({ 
+        message: 'Redis check failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+}
+</file>
+
+<file path="src/infrastructure/redis/redis.module.ts">
+import { Module } from '@nestjs/common';
+import { RedisService } from './redis.service';
+import { RedisHealthIndicator } from './redis.health';
+import { TerminusModule } from '@nestjs/terminus';
+
+@Module({
+  imports: [TerminusModule],
+  providers: [RedisService, RedisHealthIndicator],
+  exports: [RedisService, RedisHealthIndicator],
+})
+export class RedisModule {}
+</file>
+
+<file path="src/infrastructure/redis/redis.service.ts">
+import { Injectable, OnModuleDestroy, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Redis } from 'ioredis';
+
+@Injectable()
+export class RedisService extends Redis implements OnModuleDestroy {
+  private readonly logger = new Logger(RedisService.name);
+
+  constructor(configService: ConfigService) {
+    super(configService.getOrThrow<string>('redis.url'));
+
+    this.on('connect', () => this.logger.log('Redis successfully connected'));
+    this.on('error', (err) => this.logger.error('Redis connection error', err));
+  }
+
+  onModuleDestroy() {
+    this.disconnect();
+    this.logger.log('Redis connection gracefully closed');
+  }
+}
+</file>
+
+<file path="docker-entrypoint.sh">
+#!/bin/sh
+set -e
+
+echo "Applying database migrations..."
+# Execute migrations. (Note: The CI/CD environment MUST provide PRISMA_DATABASE_URL to this step)
+npx prisma migrate deploy
+
+echo "Starting the flying-class-backend application..."
+exec "$@"
+</file>
+
+<file path="docker/postgres/init/00-init-enterprise.sh">
+#!/bin/bash
+set -euo pipefail
+
+# ==========================================
+# PART 1: Create Roles
+# ==========================================
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<SQL
+DO
+\$\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'db_owner') THEN
+    CREATE ROLE db_owner LOGIN PASSWORD '${DB_OWNER_PASSWORD}';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'prisma_user') THEN
+    CREATE ROLE prisma_user LOGIN PASSWORD '${PRISMA_PASSWORD}';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
+    CREATE ROLE app_user LOGIN PASSWORD '${APP_PASSWORD}';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'readonly_user') THEN
+    CREATE ROLE readonly_user LOGIN PASSWORD '${READONLY_PASSWORD}';
+  END IF;
+END
+\$\$;
+SQL
+
+# ==========================================
+# PART 2: Create Prisma Shadow Database
+# ==========================================
+echo "Creating Prisma Shadow Database..."
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<SQL
+CREATE DATABASE flyingclass_shadow_db OWNER prisma_user;
+SQL
+
+# ==========================================
+# PART 3: Schemas and Permissions
+# ==========================================
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<SQL
+REVOKE ALL ON DATABASE ${POSTGRES_DB} FROM PUBLIC;
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+
+GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO db_owner, prisma_user, app_user, readonly_user;
+
+-- FIX 1: Add prisma_user here so it has permission to CREATE schemas!
+GRANT CREATE ON DATABASE ${POSTGRES_DB} TO db_owner, prisma_user;
+
+-- FIX 2: Change AUTHORIZATION to prisma_user so it owns the schemas and can reset them.
+CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION prisma_user;
+CREATE SCHEMA IF NOT EXISTS course AUTHORIZATION prisma_user;
+CREATE SCHEMA IF NOT EXISTS lesson AUTHORIZATION prisma_user;
+CREATE SCHEMA IF NOT EXISTS payment AUTHORIZATION prisma_user;
+CREATE SCHEMA IF NOT EXISTS system AUTHORIZATION prisma_user;
+
+GRANT USAGE ON SCHEMA auth, course, lesson, payment, system TO prisma_user;
+GRANT CREATE ON SCHEMA auth, course, lesson, payment, system TO prisma_user;
+GRANT USAGE ON SCHEMA auth, course, lesson, payment TO app_user;
+GRANT USAGE ON SCHEMA auth, course, lesson, payment TO readonly_user;
+
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA auth, course, lesson, payment, system TO prisma_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA auth, course, lesson, payment, system TO prisma_user;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA auth, course, lesson, payment, system TO prisma_user;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA auth, course, lesson, payment TO app_user;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA auth, course, lesson, payment TO app_user;
+GRANT SELECT ON ALL TABLES IN SCHEMA auth, course, lesson, payment TO readonly_user;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE prisma_user IN SCHEMA auth, course, lesson, payment, system
+GRANT ALL ON TABLES TO prisma_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE prisma_user IN SCHEMA auth, course, lesson, payment, system
+GRANT ALL ON SEQUENCES TO prisma_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE prisma_user IN SCHEMA auth, course, lesson, payment, system
+GRANT EXECUTE ON FUNCTIONS TO prisma_user;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE prisma_user IN SCHEMA auth, course, lesson, payment
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE prisma_user IN SCHEMA auth, course, lesson, payment
+GRANT USAGE, SELECT ON SEQUENCES TO app_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE prisma_user IN SCHEMA auth, course, lesson, payment
+GRANT SELECT ON TABLES TO readonly_user;
+SQL
+</file>
+
+<file path="prisma/migrations/20260313090347_init_auth_profile_course/migration.sql">
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "auth";
+
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "course";
+
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "lesson";
+
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "payment";
+
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "system";
+
+-- CreateEnum
+CREATE TYPE "auth"."UserRole" AS ENUM ('ADMIN', 'TEACHER', 'STUDENT');
+
+-- CreateEnum
+CREATE TYPE "auth"."UserStatus" AS ENUM ('ACTIVE', 'BANNED');
+
+-- CreateTable
+CREATE TABLE "auth"."users" (
+    "id" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "passwordHash" TEXT,
+    "googleId" TEXT,
+    "role" "auth"."UserRole" NOT NULL DEFAULT 'STUDENT',
+    "isVerified" BOOLEAN NOT NULL DEFAULT false,
+    "status" "auth"."UserStatus" NOT NULL DEFAULT 'ACTIVE',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "users_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "auth"."profiles" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "fullName" TEXT,
+    "phone" TEXT,
+    "avatar" TEXT,
+    "bio" TEXT,
+    "parentEmail" TEXT,
+    "identifyCardUrl" TEXT,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "profiles_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "course"."subjects" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+
+    CONSTRAINT "subjects_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "course"."classes" (
+    "id" TEXT NOT NULL,
+    "teacherId" TEXT NOT NULL,
+    "subjectId" TEXT,
+    "title" TEXT NOT NULL,
+    "description" TEXT,
+    "price" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "classCode" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'active',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "classes_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "users_email_key" ON "auth"."users"("email");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "users_googleId_key" ON "auth"."users"("googleId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "profiles_userId_key" ON "auth"."profiles"("userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "subjects_name_key" ON "course"."subjects"("name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "classes_classCode_key" ON "course"."classes"("classCode");
+
+-- AddForeignKey
+ALTER TABLE "auth"."profiles" ADD CONSTRAINT "profiles_userId_fkey" FOREIGN KEY ("userId") REFERENCES "auth"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "course"."classes" ADD CONSTRAINT "classes_teacherId_fkey" FOREIGN KEY ("teacherId") REFERENCES "auth"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "course"."classes" ADD CONSTRAINT "classes_subjectId_fkey" FOREIGN KEY ("subjectId") REFERENCES "course"."subjects"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+</file>
+
+<file path="prisma/migrations/migration_lock.toml">
+# Please do not edit this file manually
+# It should be added in your version-control system (e.g., Git)
+provider = "postgresql"
+</file>
+
+<file path="prisma/schema.prisma">
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["auth", "course", "lesson", "payment", "system"]
+}
+
+enum UserRole {
+  ADMIN
+  TEACHER
+  STUDENT
+
+  @@schema("auth")
+}
+
+enum UserStatus {
+  ACTIVE
+  BANNED
+
+  @@schema("auth")
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  passwordHash String?
+  googleId     String?    @unique
+  role         UserRole   @default(STUDENT)
+  isVerified   Boolean    @default(false)
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  
+  profile      Profile?
+  classes      Class[]    
+
+  @@schema("auth")
+  @@map("users")
+}
+
+model Profile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  fullName        String?
+  phone           String?
+  avatar          String?
+  bio             String?
+  parentEmail     String?
+  identifyCardUrl String?
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references:[id], onDelete: Cascade)
+
+  @@schema("auth")
+  @@map("profiles")
+}
+
+model Subject {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+  classes     Class[]
+
+  @@schema("course")
+  @@map("subjects")
+}
+
+model Class {
+  id          String   @id @default(uuid())
+  teacherId   String
+  subjectId   String?
+  title       String
+  description String?
+  price       Decimal  @default(0) @db.Decimal(12, 2)
+  classCode   String   @unique
+  type        String
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teacher User     @relation(fields:[teacherId], references: [id])
+  subject Subject? @relation(fields: [subjectId], references:[id])
+
+  @@schema("course")
+  @@map("classes")
+}
+</file>
+
+<file path="src/infrastructure/database/prisma/prisma.module.ts">
+import { Module } from '@nestjs/common';
+import { PrismaService } from './prisma.service';
+import { PrismaHealthIndicator } from './prisma.health';
+import { TerminusModule } from '@nestjs/terminus';
+
+@Module({
+  imports: [TerminusModule],
+  providers: [PrismaService, PrismaHealthIndicator],
+  exports: [PrismaService, PrismaHealthIndicator],
+})
+export class PrismaModule {}
+</file>
+
+<file path="src/infrastructure/database/prisma/prisma.service.ts">
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg'; 
+import { ConfigService } from '@nestjs/config';
+
+@Injectable()
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(PrismaService.name);
+
+  constructor(configService: ConfigService) {
+    const connectionString = configService.getOrThrow<string>('database.url');
+    const nodeEnv = configService.get<string>('app.nodeEnv', 'development');
+    
+    const pool = new Pool({ connectionString });
+    const adapter = new PrismaPg(pool);
+
+    super({
+      adapter,
+      transactionOptions: {
+        maxWait: 5000,    // Wait 5s to secure a connection from the pool
+        timeout: 10000,   // Allow 10s for the entire transaction to complete
+      },
+      log:[
+        { emit: 'event', level: 'query' },
+        { emit: 'event', level: 'info' },
+        { emit: 'event', level: 'warn' },
+        { emit: 'event', level: 'error' },
+      ],
+    });
+
+    if (nodeEnv === 'development') {
+      // @ts-ignore
+      this.$on('query', (e: any) => {
+        this.logger.debug(`Query: ${e.query} - Duration: ${e.duration}ms`);
+      });
+    }
+
+    // @ts-ignore
+    this.$on('info', (e: any) => this.logger.log(e.message));
+    // @ts-ignore
+    this.$on('warn', (e: any) => this.logger.warn(e.message));
+    // @ts-ignore
+    this.$on('error', (e: any) => this.logger.error(e.message));
+  }
+
+  async withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+    let lastError: any;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error: any) {
+        lastError = error;
+        // P2024: Connection pool timeout
+        // P2034: Transaction conflict/deadlock (usually requiring a retry)
+        const isTransient = error.code === 'P2024' || error.code === 'P2034';
+        
+        if (!isTransient || attempt === maxRetries - 1) break;
+        
+        const delay = Math.pow(2, attempt) * 100; // Exponential backoff: 100ms, 200ms, 400ms
+        await new Promise(res => setTimeout(res, delay));
+        this.logger.warn(`Transient error ${error.code}. Retrying attempt ${attempt + 1}/${maxRetries}...`);
+      }
+    }
+    throw lastError;
+  }
+
+  async onModuleInit() {
+    await this.$connect();
+    this.logger.log('Prisma successfully connected to the database');
+  }
+
+  async onModuleDestroy() {
+    await this.$disconnect();
+    this.logger.log('Prisma connection gracefully closed');
+  }
+}
+</file>
+
+<file path="src/infrastructure/infrastructure.module.ts">
+import { Module } from '@nestjs/common';
+import { PrismaModule } from './database/prisma/prisma.module';
+import { RedisModule } from './redis/redis.module';
+
+@Module({
+  imports: [PrismaModule, RedisModule],
+  exports: [PrismaModule, RedisModule], 
+})
+export class InfrastructureModule {}
+</file>
+
+<file path="src/app.controller.ts">
+import { Controller, Get } from '@nestjs/common';
+import { AppService } from './app.service';
+import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
+import { PrismaHealthIndicator } from './infrastructure/database/prisma/prisma.health';
+import { RedisHealthIndicator } from './infrastructure/redis/redis.health';
+
+@Controller()
+export class AppController {
+  constructor(
+    private readonly health: HealthCheckService,
+    private readonly prismaHealth: PrismaHealthIndicator,
+    private readonly redisHealth: RedisHealthIndicator,
+  ) {}
+
+  @Get('health')
+  @HealthCheck()
+  check() {
+    return this.health.check([
+      () => this.prismaHealth.isHealthy('database'),
+      () => this.redisHealth.isHealthy('redis'),
+    ]);
+  }
+}
+</file>
+
+<file path="src/app.module.ts">
+import { Module } from '@nestjs/common';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { InfrastructureModule } from './infrastructure/infrastructure.module';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import configuration from './config/configuration';
+import { envValidationSchema } from './config/env.validation';
+import { LoggerModule } from 'nestjs-pino';
+import { randomUUID } from 'crypto';
+import { TerminusModule } from '@nestjs/terminus';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      cache: true,
+      load: [configuration],
+      validationSchema: envValidationSchema,
+      validationOptions: {
+        abortEarly: false,
+        allowUnknown: true,
+      },
+    }),
+    LoggerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: async (config: ConfigService) => {
+        const isProduction = config.get('app.nodeEnv') === 'production';
+        
+        return {
+          forRoutes: ['*path'], 
+
+          pinoHttp: {
+            genReqId: (request) => request.headers['x-request-id'] || randomUUID(),
+            
+            level: isProduction ? 'info' : 'debug',
+            transport: isProduction
+              ? undefined // In production, output raw JSON for Datadog/CloudWatch
+              : {
+                  target: 'pino-pretty', // In development, format JSON beautifully for your terminal
+                  options: {
+                    singleLine: false,
+                    colorize: true,
+                  },
+                },
+            
+            autoLogging: true, // Automatically log request/response
+          },
+        };
+      },
+    }),
+    TerminusModule,
+    InfrastructureModule
+  ],
+  controllers: [AppController],
+  providers: [AppService]
+})
+export class AppModule {}
+</file>
+
+<file path="src/app.service.ts">
+import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class AppService {
+  // Can be left empty or used for other app-level methods later
+}
+</file>
+
+<file path="src/main.ts">
+import 'reflect-metadata';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { ConfigService } from '@nestjs/config';
+import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { Logger } from 'nestjs-pino';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+
+  app.useLogger(app.get(Logger));
+
+  app.setGlobalPrefix('api');
+
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: '1',
+  });
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true, 
+      forbidNonWhitelisted: true, 
+      transform: true,
+    }),
+  );
+
+  app.useGlobalFilters(new GlobalExceptionFilter());
+
+  app.enableShutdownHooks();
+
+  const configService = app.get(ConfigService);
+  const port = configService.get<number>('app.port', 3000);
+  
+  await app.listen(port, '0.0.0.0');
+}
+bootstrap();
+</file>
+
+<file path=".dockerignore">
+node_modules
+dist
+.git
+.env
+</file>
+
+<file path=".gitignore">
+node_modules/
+dist/
+.env
+</file>
+
+<file path="docker-compose.yml">
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flyingclass-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: ${API_PORT:-3000}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"require('http').get('http://localhost:3000/api/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  postgres:
+    image: postgres:16
+    container_name: flyingclass-postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-flyingclass_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: flyingclass-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  redisdata:
+</file>
+
+<file path="Dockerfile">
+FROM node:22-alpine AS base
+WORKDIR /app
+RUN chown -R node:node /app
+
+FROM base AS deps
+COPY package*.json ./
+RUN npm ci
+
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build
+
+FROM base AS runtime
+ENV NODE_ENV=production
+COPY package*.json ./
+RUN npm ci --omit=dev && chown -R node:node /app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
+
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
+
+USER node
+EXPOSE 3000
+
+ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["node", "dist/src/main.js"]
+</file>
+
+<file path="nest-cli.json">
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src"
+}
+</file>
+
+<file path="package.json">
+{
+  "name": "flying-class-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/src/main.js",
+    "db:generate": "prisma generate",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
+    "db:reset": "prisma migrate reset"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.3",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/terminus": "^11.1.1",
+    "@prisma/adapter-pg": "^7.5.0",
+    "@prisma/client": "^7.5.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "ioredis": "^5.10.0",
+    "joi": "^18.0.2",
+    "nestjs-pino": "^4.6.1",
+    "pg": "^8.20.0",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.2",
+    "pino-pretty": "^13.1.3",
+    "prisma": "^7.5.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.2"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}
+</file>
+
+<file path="prisma.config.ts">
+import { defineConfig, env } from "prisma/config";
+
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  migrations: {
+    seed: "tsx prisma/seed.ts",
+  },
+  datasource: {
+    url: process.env.PRISMA_DATABASE_URL || process.env.DATABASE_URL,
+    shadowDatabaseUrl: env("SHADOW_DATABASE_URL"),
+  },
+});
+</file>
+
+<file path="tsconfig.build.json">
+{
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "**/*spec.ts"]
+}
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2021",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "strict": true,
+    "skipLibCheck": true
+  }
+}
+</file>
+
+</files>
