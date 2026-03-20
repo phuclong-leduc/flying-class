@@ -14,7 +14,7 @@
     "NODE_ENV": "development"
   },
 
-  "postCreateCommand": "npm ci && npx prisma generate",
+  "postCreateCommand": "npm ci && npm run db:migrate:dev && npm run db:seed",
   "forwardPorts": [3000],
 
   "customizations": {
