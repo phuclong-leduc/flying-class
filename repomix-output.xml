@@ -81,53 +81,47 @@ flying-class-backend/
     app.service.ts
     main.ts
   .dockerignore
-  .env.example
+  .prettierrc
   docker-compose.yml
   docker-entrypoint.sh
   Dockerfile
   nest-cli.json
-  package copy.json
   package.json
   prisma.config.ts
   repomix-output.xml
   tsconfig.build.json
   tsconfig.json
+.editorconfig.txt
+.gitattributes.txt
 .gitignore
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
 
-<file path=".devcontainer/devcontainer.json">
+<file path="flying-class-backend/.prettierrc">
 {
-  "name": "Flying Class Backend Dev",
-  "dockerComposeFile": ["docker-compose.devcontainer.yml"],
-  "service": "backend",
-  "workspaceFolder": "/app",
-
-  "runServices": ["postgres", "redis", "backend"],
-  "shutdownAction": "stopCompose",
-
-  "remoteUser": "node",
-  "updateRemoteUserUID": true,
-
-  "containerEnv": {
-    "NODE_ENV": "development"
-  },
-
-  "postCreateCommand": "npm ci && npx prisma generate",
-  "forwardPorts": [3000],
-
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "firsttris.vscode-jest-runner",
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode"
-      ]
-    }
-  }
+  "endOfLine": "lf"
 }
+</file>
+
+<file path=".editorconfig.txt">
+# Editor configuration, see https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+end_of_line = lf
+
+[*.bat]
+end_of_line = crlf
+
+[*.cmd]
+end_of_line = crlf
 </file>
 
 <file path=".devcontainer/docker-compose.devcontainer.yml">
@@ -402,7 +396,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["auth", "course", "lesson", "payment", "system"]
+  schemas  = ["public", "auth", "course", "lesson", "payment", "system"]
 }
 
 enum UserRole {
@@ -1109,57 +1103,6 @@ CMD ["node", "dist/src/main.js"]
   "$schema": "https://json.schemastore.org/nest-cli",
   "collection": "@nestjs/schematics",
   "sourceRoot": "src"
-}
-</file>
-
-<file path="flying-class-backend/package copy.json">
-{
-  "name": "flying-class-backend",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "build": "nest build",
-    "start": "nest start",
-    "start:dev": "nest start --watch",
-    "start:prod": "node dist/src/main.js",
-    "db:generate": "prisma generate",
-    "db:migrate:dev": "prisma migrate dev",
-    "db:migrate:deploy": "prisma migrate deploy",
-    "db:seed": "prisma db seed",
-    "db:reset": "prisma migrate reset"
-  },
-  "dependencies": {
-    "@nestjs/common": "^11.0.1",
-    "@nestjs/config": "^4.0.3",
-    "@nestjs/core": "^11.0.1",
-    "@nestjs/platform-express": "^11.0.1",
-    "@nestjs/terminus": "^11.1.1",
-    "@prisma/adapter-pg": "^7.5.0",
-    "@prisma/client": "^7.5.0",
-    "class-transformer": "^0.5.1",
-    "class-validator": "^0.15.1",
-    "ioredis": "^5.10.0",
-    "joi": "^18.0.2",
-    "nestjs-pino": "^4.6.1",
-    "pg": "^8.20.0",
-    "pino": "^10.3.1",
-    "pino-http": "^11.0.0",
-    "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
-  },
-  "devDependencies": {
-    "@nestjs/cli": "^11.0.1",
-    "@types/express": "^5.0.6",
-    "@types/node": "^22.10.2",
-    "pino-pretty": "^13.1.3",
-    "prisma": "^7.5.0",
-    "ts-node": "^10.9.2",
-    "tsx": "^4.21.0",
-    "typescript": "^5.7.2"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
-  }
 }
 </file>
 
@@ -2360,12 +2303,51 @@ export default defineConfig({
 }
 </file>
 
+<file path=".gitattributes.txt">
+* text=auto eol=lf
+
+*.bat eol=crlf
+*.cmd eol=crlf
+</file>
+
 <file path=".gitignore">
 node_modules/
 dist/
 .env
 .DS_Store
 *.log
+</file>
+
+<file path=".devcontainer/devcontainer.json">
+{
+  "name": "Flying Class Backend Dev",
+  "dockerComposeFile": ["docker-compose.devcontainer.yml"],
+  "service": "backend",
+  "workspaceFolder": "/app",
+
+  "runServices": ["postgres", "redis", "backend"],
+  "shutdownAction": "stopCompose",
+
+  "remoteUser": "node",
+  "updateRemoteUserUID": true,
+
+  "containerEnv": {
+    "NODE_ENV": "development"
+  },
+
+  "postCreateCommand": "npm ci && npm run db:migrate:dev && npm run db:seed",
+  "forwardPorts": [3000],
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "firsttris.vscode-jest-runner",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}
 </file>
 
 </files>

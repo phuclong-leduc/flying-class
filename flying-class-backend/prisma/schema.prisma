@@ -5,7 +5,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["auth", "course", "lesson", "payment", "system"]
+  schemas  = ["public", "auth", "course", "lesson", "payment", "system"]
 }
 
 enum UserRole {
